@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPC XmR 控制图核心算法与可视化看板</title>
+    <!-- 引入 Tailwind CSS 用于页面样式 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Plotly.js 用于渲染交互式控制图 -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        .flow-card {
+            transition: all 0.2s ease-in-out;
+        }
+        .flow-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .arrow-down {
+            width: 0; 
+            height: 0; 
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-top: 10px solid #94a3b8;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans p-6 md:p-10">
+
+    <div class="max-w-6xl mx-auto space-y-8">
+        
+        <!-- 头部标题 -->
+        <header class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-900">calc_xmr(data) 核心算法逻辑与交互式看板</h1>
+                <p class="text-slate-500 text-sm mt-1">统计过程控制 (SPC) · 单值-移动极差控制图 (Individuals & Moving Range) 源码级拆解</p>
+            </div>
+            <div class="bg-blue-50 text-blue-700 px-4 py-2 rounded-lg text-xs font-mono border border-blue-200">
+                输入数据: [39, 41, 41, 41, 43, 44, 41, 42, 40, 41, 44, 40]
+            </div>
+        </header>
+
+        <!-- 第一部分：可视化算法流程图 -->
+        <section class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <h2 class="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                <span class="bg-indigo-600 text-white w-6 h-6 rounded-full inline-flex items-center justify-center text-xs">1</span>
+                核心算法双通道流程图 (对应源码执行顺序)
+            </h2>
+
+            <div class="flex flex-col items-center">
+                <!-- 输入层 -->
+                <div class="flow-card bg-slate-800 text-white px-6 py-3 rounded-lg font-mono text-sm shadow">
+                    输入原始测量列表: values = [39, 41, 41, 41, 43, 44, 41, 42, 40, 41, 44, 40]
+                </div>
+                
+                <div class="h-6 w-0.5 bg-slate-400"></div>
+                <div class="arrow-down"></div>
+
+                <!-- 阶段一：基础特征提取 -->
+                <div class="w-full max-w-3xl bg-slate-100 p-4 rounded-xl border border-slate-300 mt-1">
+                    <div class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 text-center">阶段一：基础统计量提取</div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="flow-card bg-white p-3.5 rounded-lg border border-slate-200 shadow-sm">
+                            <div class="text-xs text-slate-400 font-semibold">1. 整体平均值</div>
+                            <div class="font-mono text-sm font-bold text-slate-800 mt-1">clx = mean(values) = <span class="text-blue-600">41.42</span></div>
+                            <div class="text-xs text-slate-500 mt-1">作为上方单值图的中心线基准</div>
+                        </div>
+                        <div class="flow-card bg-white p-3.5 rounded-lg border border-slate-200 shadow-sm">
+                            <div class="text-xs text-slate-400 font-semibold">2. 移动极差与均值 (阶段首点置为 NaN)</div>
+                            <div class="font-mono text-xs text-slate-700 mt-1">valid_mr = [NaN, 2, 0, 0, 2, 1, 3, 1, 2, 1, 3, 4]</div>
+                            <div class="font-mono text-sm font-bold text-slate-800 mt-1">avg_mr = mean(valid_mr) = <span class="text-amber-600">1.73</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 分叉线 -->
+                <div class="h-6 w-0.5 bg-slate-400"></div>
+                <div class="w-full max-w-3xl border-t-2 border-slate-400"></div>
+                <div class="w-full max-w-3xl flex justify-around">
+                    <div class="h-6 w-0.5 bg-slate-400"></div>
+                    <div class="h-6 w-0.5 bg-slate-400"></div>
+                </div>
+
+                <!-- 阶段二：双通道并行计算 -->
+                <div class="w-full grid grid-cols-1 md:grid-cols-2 gap-6 mt-1">
+                    
+                    <!-- 左通道：上方图 Individuals -->
+                    <div class="bg-blue-50/60 p-5 rounded-xl border border-blue-200 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="bg-blue-600 text-white text-xs font-bold px-2.5 py-1 rounded">左通道：上方单值图 (Individuals)</span>
+                                <span class="text-xs font-mono text-blue-700">常数 d2 = 1.128</span>
+                            </div>
+                            <div class="space-y-2.5 font-mono text-xs">
+                                <div class="bg-white p-2.5 rounded border border-blue-100">
+                                    <span class="text-slate-400 block font-sans">中心线 (Center Line):</span>
+                                    <strong>clx = 41.42</strong>
+                                </div>
+                                <div class="bg-white p-2.5 rounded border border-blue-100">
+                                    <span class="text-slate-400 block font-sans">上下控制限 (±3σ 边界):</span>
+                                    <div>uclx = clx + (3 / d2) * avg_mr = <strong class="text-red-600">46.01</strong></div>
+                                    <div>lclx = clx - (3 / d2) * avg_mr = <strong class="text-red-600">36.82</strong></div>
+                                </div>
+                                <div class="bg-white p-2.5 rounded border border-blue-100">
+                                    <span class="text-slate-400 block font-sans">内部警戒线 (±1σ, ±2σ):</span>
+                                    <div>usigma2x / lsigma2x = clx ± (2 / d2) * avg_mr</div>
+                                    <div>usigma1x / lsigma1x = clx ± (1 / d2) * avg_mr</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-4 bg-blue-100/80 p-2.5 rounded text-xs font-mono text-blue-900 border border-blue-200">
+                            🔍 异常检测: apply_run_tests(values, x_limits)
+                        </div>
+                    </div>
+
+                    <!-- 右通道：下方图 Moving Range -->
+                    <div class="bg-amber-50/60 p-5 rounded-xl border border-amber-200 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="bg-amber-600 text-white text-xs font-bold px-2.5 py-1 rounded">右通道：下方极差图 (Moving Range)</span>
+                                <span class="text-xs font-mono text-amber-800">常数 D4 = 3.267</span>
+                            </div>
+                            <div class="space-y-2.5 font-mono text-xs">
+                                <div class="bg-white p-2.5 rounded border border-amber-100">
+                                    <span class="text-slate-400 block font-sans">中心线 (Variation CL):</span>
+                                    <strong>var_cl = avg_mr = 1.73</strong>
+                                </div>
+                                <div class="bg-white p-2.5 rounded border border-amber-100">
+                                    <span class="text-slate-400 block font-sans">上下控制限 (差值非负，下限恒为0):</span>
+                                    <div>var_ucl = D4 * avg_mr = <strong class="text-red-600">5.64</strong></div>
+                                    <div>var_lcl = <strong class="text-slate-600">0.00</strong></div>
+                                </div>
+                                <div class="bg-white p-2.5 rounded border border-amber-100">
+                                    <span class="text-slate-400 block font-sans">极差警戒线 (将 CL 到 UCL 距离三等分):</span>
+                                    <div>sigma_1_upper = var_cl + (var_ucl - var_cl) / 3</div>
+                                    <div>sigma_2_upper = var_cl + 2 * (var_ucl - var_cl) / 3</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-4 bg-amber-100/80 p-2.5 rounded text-xs font-mono text-amber-900 border border-amber-200">
+                            🔍 异常检测: apply_run_tests(valid_mr_values, valid_mr_limits)
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- 合并线 -->
+                <div class="w-full max-w-3xl flex justify-around">
+                    <div class="h-6 w-0.5 bg-slate-400"></div>
+                    <div class="h-6 w-0.5 bg-slate-400"></div>
+                </div>
+                <div class="w-full max-w-3xl border-b-2 border-slate-400"></div>
+                <div class="h-6 w-0.5 bg-slate-400"></div>
+                <div class="arrow-down"></div>
+
+                <!-- 最终输出 -->
+                <div class="flow-card bg-emerald-600 text-white px-8 py-3 rounded-lg font-medium text-sm shadow mt-1">
+                    阶段三：汇总打包为 Pandas DataFrame (df) ➔ 传入 plot_control_chart 渲染双联图
+                </div>
+            </div>
+        </section>
+
+        <!-- 第二部分：实时渲染的 Plotly 双联控制图 -->
+        <section class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <span class="bg-indigo-600 text-white w-6 h-6 rounded-full inline-flex items-center justify-center text-xs">2</span>
+                    实时交互图表渲染 (1:1 还原 Python 输出)
+                </h2>
+                <span class="text-xs text-slate-400">支持鼠标悬停查看数值、框选缩放</span>
+            </div>
+            
+            <!-- 图表容器 -->
+            <div id="spc-chart" class="w-full h-[620px] border border-slate-100 rounded-lg"></div>
+        </section>
+
+        <!-- 第三部分：源码变量与图表位置对照表 -->
+        <section class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <span class="bg-indigo-600 text-white w-6 h-6 rounded-full inline-flex items-center justify-center text-xs">3</span>
+                Debug 速查表：源码变量 vs 图表位置
+            </h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse text-sm">
+                    <thead>
+                        <tr class="bg-slate-100 text-slate-600 border-b border-slate-200">
+                            <th class="py-3 px-4 font-semibold">源码变量名</th>
+                            <th class="py-3 px-4 font-semibold">所属子图</th>
+                            <th class="py-3 px-4 font-semibold">当前计算值</th>
+                            <th class="py-3 px-4 font-semibold">物理含义与 Debug 关注点</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 font-mono text-xs">
+                        <tr class="hover:bg-slate-50">
+                            <td class="py-3 px-4 font-bold text-blue-600">clx</td>
+                            <td class="py-3 px-4 font-sans">上方图 (Individuals)</td>
+                            <td class="py-3 px-4">41.42</td>
+                            <td class="py-3 px-4 font-sans text-slate-600">全部 12 个原始测量数据的算术平均值（中心实线）</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="py-3 px-4 font-bold text-blue-600">uclx / lclx</td>
+                            <td class="py-3 px-4 font-sans">上方图 (Individuals)</td>
+                            <td class="py-3 px-4">46.01 / 36.82</td>
+                            <td class="py-3 px-4 font-sans text-slate-600">单值图的 ±3σ 控制限（上下虚线），决定单点是否越界失控</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="py-3 px-4 font-bold text-amber-600">valid_mr_values</td>
+                            <td class="py-3 px-4 font-sans">下方图 (Moving Range)</td>
+                            <td class="py-3 px-4">[NaN, 2, 0, 0, 2...]</td>
+                            <td class="py-3 px-4 font-sans text-slate-600">相邻两数之差的绝对值。注意每个阶段第 1 个点没有前项，固定为 <code>NaN</code></td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="py-3 px-4 font-bold text-amber-600">avg_mr / var_cl</td>
+                            <td class="py-3 px-4 font-sans">下方图 (Moving Range)</td>
+                            <td class="py-3 px-4">1.73</td>
+                            <td class="py-3 px-4 font-sans text-slate-600">有效移动极差的均值（除去首点后的 11 个差值求平均）</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="py-3 px-4 font-bold text-amber-600">var_ucl / var_lcl</td>
+                            <td class="py-3 px-4 font-sans">下方图 (Moving Range)</td>
+                            <td class="py-3 px-4">5.64 / 0.00</td>
+                            <td class="py-3 px-4 font-sans text-slate-600">极差图上下限，监控相邻两次抽样之间是否存在“剧烈跳变”</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </div>
+
+    <!-- 脚本：计算并渲染 Plotly 双联图 -->
+    <script>
+        const xPoints = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+        const rawValues = [39, 41, 41, 41, 43, 44, 41, 42, 40, 41, 44, 40];
+        const mrValues = [null, 2, 0, 0, 2, 1, 3, 1, 2, 1, 3, 4];
+
+        // 统计常数计算值
+        const clx = 41.42, uclx = 46.01, lclx = 36.82;
+        const var_cl = 1.73, var_ucl = 5.64, var_lcl = 0.00;
+
+        const traces = [
+            // --- 上方图 (Individuals) ---
+            {
+                x: [1, 12], y: [uclx, uclx], mode: 'lines', name: 'UCL (46.01)',
+                line: { color: '#94a3b8', dash: 'dash', width: 1.5 }, xaxis: 'x', yaxis: 'y', hoverinfo: 'y+name'
+            },
+            {
+                x: [1, 12], y: [clx, clx], mode: 'lines', name: 'CL (41.42)',
+                line: { color: '#94a3b8', width: 1.5 }, xaxis: 'x', yaxis: 'y', hoverinfo: 'y+name'
+            },
+            {
+                x: [1, 12], y: [lclx, lclx], mode: 'lines', name: 'LCL (36.82)',
+                line: { color: '#94a3b8', dash: 'dash', width: 1.5 }, xaxis: 'x', yaxis: 'y', hoverinfo: 'y+name'
+            },
+            {
+                x: xPoints, y: rawValues, mode: 'lines+markers', name: '单值 (Individuals)',
+                line: { color: '#475569', width: 1 },
+                marker: { color: '#0f172a', size: 7 },
+                xaxis: 'x', yaxis: 'y'
+            },
+
+            // --- 下方图 (Moving Range) ---
+            {
+                x: [1, 12], y: [var_ucl, var_ucl], mode: 'lines', name: 'mR UCL (5.64)',
+                line: { color: '#94a3b8', dash: 'dash', width: 1.5 }, xaxis: 'x2', yaxis: 'y2', hoverinfo: 'y+name'
+            },
+            {
+                x: [1, 12], y: [var_cl, var_cl], mode: 'lines', name: 'mR CL (1.73)',
+                line: { color: '#94a3b8', width: 1.5 }, xaxis: 'x2', yaxis: 'y2', hoverinfo: 'y+name'
+            },
+            {
+                x: [1, 12], y: [var_lcl, var_lcl], mode: 'lines', name: 'mR LCL (0.00)',
+                line: { color: '#94a3b8', dash: 'dash', width: 1.5 }, xaxis: 'x2', yaxis: 'y2', hoverinfo: 'y+name'
+            },
+            {
+                x: xPoints, y: mrValues, mode: 'lines+markers', name: '移动极差 (mR)',
+                line: { color: '#475569', width: 1 },
+                marker: { color: '#0f172a', size: 7 },
+                xaxis: 'x2', yaxis: 'y2'
+            }
+        ];
+
+        const layout = {
+            title: { text: '车间数据 XmR 控制图', font: { size: 16, color: '#1e293b' }, x: 0.02 },
+            showlegend: false,
+            plot_bgcolor: '#f8fafc',
+            paper_bgcolor: '#ffffff',
+            margin: { l: 50, r: 50, t: 60, b: 40 },
+            grid: { rows: 2, columns: 1, subplots: [['xy'], ['x2y2']], roworder: 'top to bottom' },
+            
+            // 上方图坐标轴
+            xaxis: { domain: [0, 1], showticklabels: false, zeroline: false, showgrid: false, linecolor: '#334155', mirror: true },
+            yaxis: { domain: [0.38, 0.95], title: '', zeroline: false, showgrid: false, linecolor: '#334155', mirror: true, range: [35.5, 47.2] },
+            
+            // 下方图坐标轴
+            xaxis2: { domain: [0, 1], anchor: 'y2', dtick: 1, zeroline: false, showgrid: false, linecolor: '#334155', mirror: true },
+            yaxis2: { domain: [0, 0.28], anchor: 'x2', title: '', zeroline: false, showgrid: false, linecolor: '#334155', mirror: true, range: [-0.5, 6.2] },
+
+            // 子图标题与右侧数值标注
+            annotations: [
+                { text: '<b>Individuals</b>', x: 0.5, y: 0.99, xref: 'paper', yref: 'paper', showarrow: false, font: { size: 14 } },
+                { text: '<b>Moving Range</b>', x: 0.5, y: 0.31, xref: 'paper', yref: 'paper', showarrow: false, font: { size: 14 } },
+                // 上图右侧数值标签
+                { text: '46.01', x: 11.85, y: 46.3, xref: 'x', yref: 'y', showarrow: false, font: { size: 11, color: '#1e3a8a' } },
+                { text: '41.42', x: 11.85, y: 41.7, xref: 'x', yref: 'y', showarrow: false, font: { size: 11, color: '#1e3a8a' } },
+                { text: '36.82', x: 11.85, y: 37.1, xref: 'x', yref: 'y', showarrow: false, font: { size: 11, color: '#1e3a8a' } },
+                // 下图右侧数值标签
+                { text: '5.64', x: 11.85, y: 5.9, xref: 'x2', yref: 'y2', showarrow: false, font: { size: 11, color: '#1e3a8a' } },
+                { text: '1.73', x: 11.85, y: 2.0, xref: 'x2', yref: 'y2', showarrow: false, font: { size: 11, color: '#1e3a8a' } },
+                { text: '0.00', x: 11.85, y: 0.3, xref: 'x2', yref: 'y2', showarrow: false, font: { size: 11, color: '#1e3a8a' } }
+            ]
+        };
+
+        Plotly.newPlot('spc-chart', traces, layout, { responsive: true });
+    </script>
+</body>
+</html>
