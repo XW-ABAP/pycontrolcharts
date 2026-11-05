@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPC Xbar-S 控制图核心算法与可视化看板</title>
+    <!-- 引入 Tailwind CSS 用于页面样式 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Plotly.js 用于渲染交互式控制图 -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        .flow-card {
+            transition: all 0.2s ease-in-out;
+        }
+        .flow-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .arrow-down {
+            width: 0; 
+            height: 0; 
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-top: 10px solid #94a3b8;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans p-6 md:p-10">
+
+    <div class="max-w-6xl mx-auto space-y-8">
+        
+        <!-- 头部标题 -->
+        <header class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-900">calc_xbar_s(flat_data, subgroup_size=4) 核心算法逻辑与看板</h1>
+                <p class="text-slate-500 text-sm mt-1">统计过程控制 (SPC) · 均值-标准差控制图 (Xbar-S Chart) 源码级拆解</p>
+            </div>
+            <div class="bg-blue-50 text-blue-700 px-4 py-2 rounded-lg text-xs font-mono border border-blue-200 max-w-md truncate">
+                输入数据 (40个点, 组大小=4): [10.2, 10.4, 10.1, 10.3, ...]
+            </div>
+        </header>
+
+        <!-- 第一部分：可视化算法流程图 -->
+        <section class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <h2 class="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                <span class="bg-indigo-600 text-white w-6 h-6 rounded-full inline-flex items-center justify-center text-xs">1</span>
+                核心算法双通道流程图 (对应 Xbar-S 源码执行顺序)
+            </h2>
+
+            <div class="flex flex-col items-center">
+                <!-- 输入层 -->
+                <div class="flow-card bg-slate-800 text-white px-6 py-3 rounded-lg font-mono text-sm shadow text-center">
+                    输入一维列表 flat_data (40项) & subgroup_size = 4 ➔ 重塑为 10 组
+                </div>
+                
+                <div class="h-6 w-0.5 bg-slate-400"></div>
+                <div class="arrow-down"></div>
+
+                <!-- 阶段一：基础特征提取 -->
+                <div class="w-full max-w-3xl bg-slate-100 p-4 rounded-xl border border-slate-300 mt-1">
+                    <div class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 text-center">阶段一：子群统计量提取 (Subgroup Stats)</div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="flow-card bg-white p-3.5 rounded-lg border border-slate-200 shadow-sm">
+                            <div class="text-xs text-slate-400 font-semibold">1. 子群均值向量 (Xbar)</div>
+                            <div class="font-mono text-xs text-slate-700 mt-1">[10.25, 10.43, 9.95, 10.45, 10.10, 10.40, 11.35, 10.00, 10.20, 10.10]</div>
+                            <div class="font-mono text-sm font-bold text-slate-800 mt-1">总均值 X_double_bar = <span class="text-blue-600">10.32</span></div>
+                        </div>
+                        <div class="flow-card bg-white p-3.5 rounded-lg border border-slate-200 shadow-sm">
+                            <div class="text-xs text-slate-400 font-semibold">2. 子群标准差向量 (Std Dev S)</div>
+                            <div class="font-mono text-xs text-slate-700 mt-1">[0.13, 0.17, 0.13, 0.13, 0.08, 0.08, 0.13, 0.08, 0.08, 0.08]</div>
+                            <div class="font-mono text-sm font-bold text-slate-800 mt-1">平均标准差 S_bar = <span class="text-amber-600">0.11</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 分叉线 -->
+                <div class="h-6 w-0.5 bg-slate-400"></div>
+                <div class="w-full max-w-3xl border-t-2 border-slate-400"></div>
+                <div class="w-full max-w-3xl flex justify-around">
+                    <div class="h-6 w-0.5 bg-slate-400"></div>
+                    <div class="h-6 w-0.5 bg-slate-400"></div>
+                </div>
+
+                <!-- 阶段二：双通道并行计算 -->
+                <div class="w-full grid grid-cols-1 md:grid-cols-2 gap-6 mt-1">
+                    
+                    <!-- 左通道：上方图 Xbar Chart -->
+                    <div class="bg-blue-50/60 p-5 rounded-xl border border-blue-200 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="bg-blue-600 text-white text-xs font-bold px-2.5 py-1 rounded">左通道：上方均值图 (Xbar Chart)</span>
+                                <span class="text-xs font-mono text-blue-700">常数 A3 = 1.628</span>
+                            </div>
+                            <div class="space-y-2.5 font-mono text-xs">
+                                <div class="bg-white p-2.5 rounded border border-blue-100">
+                                    <span class="text-slate-400 block font-sans">中心线 (Center Line):</span>
+                                    <strong>CL = X_double_bar = 10.32</strong>
+                                </div>
+                                <div class="bg-white p-2.5 rounded border border-blue-100">
+                                    <span class="text-slate-400 block font-sans">上下控制限 (Control Limits):</span>
+                                    <div>UCL = X_double_bar + A3 * S_bar = <strong class="text-red-600">10.50</strong></div>
+                                    <div>LCL = X_double_bar - A3 * S_bar = <strong class="text-red-600">10.14</strong></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-4 bg-blue-100/80 p-2.5 rounded text-xs font-mono text-blue-900 border border-blue-200">
+                            🔍 违规检测: 点 3 (9.95)、点 5 (10.10)、点 7 (11.35)、点 8 (10.00)、点 10 (10.10) 触发失控
+                        </div>
+                    </div>
+
+                    <!-- 右通道：下方图 S Chart -->
+                    <div class="bg-amber-50/60 p-5 rounded-xl border border-amber-200 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="bg-amber-600 text-white text-xs font-bold px-2.5 py-1 rounded">右通道：下方标准差图 (S Chart)</span>
+                                <span class="text-xs font-mono text-amber-800">常数 B3 = 0.0, B4 = 2.266</span>
+                            </div>
+                            <div class="space-y-2.5 font-mono text-xs">
+                                <div class="bg-white p-2.5 rounded border border-amber-100">
+                                    <span class="text-slate-400 block font-sans">中心线 (Center Line):</span>
+                                    <strong>CL = S_bar = 0.11</strong>
+                                </div>
+                                <div class="bg-white p-2.5 rounded border border-amber-100">
+                                    <span class="text-slate-400 block font-sans">上下控制限 (Control Limits):</span>
+                                    <div>UCL = B4 * S_bar = <strong class="text-red-600">0.25</strong></div>
+                                    <div>LCL = B3 * S_bar = <strong class="text-slate-600">0.00</strong></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-4 bg-amber-100/80 p-2.5 rounded text-xs font-mono text-amber-900 border border-amber-200">
+                            🔍 违规检测: 所有子群标准差均在 0.00 ~ 0.25 范围内，无失控点
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- 合并线 -->
+                <div class="w-full max-w-3xl flex justify-around">
+                    <div class="h-6 w-0.5 bg-slate-400"></div>
+                    <div class="h-6 w-0.5 bg-slate-400"></div>
+                </div>
+                <div class="w-full max-w-3xl border-b-2 border-slate-400"></div>
+                <div class="h-6 w-0.5 bg-slate-400"></div>
+                <div class="arrow-down"></div>
+
+                <!-- 最终输出 -->
+                <div class="flow-card bg-emerald-600 text-white px-8 py-3 rounded-lg font-medium text-sm shadow mt-1 text-center">
+                    阶段三：汇总打包为 Pandas DataFrame (df_result) ➔ 过滤 violations 并渲染 Xbar-S 双联控制图
+                </div>
+            </div>
+        </section>
+
+        <!-- 第二部分：实时渲染的 Plotly 双联控制图 -->
+        <section class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <span class="bg-indigo-600 text-white w-6 h-6 rounded-full inline-flex items-center justify-center text-xs">2</span>
+                    实时交互图表渲染 (Xbar-S 双联控制图)
+                </h2>
+                <span class="text-xs text-slate-400">支持鼠标悬停查看数值、高亮失控点</span>
+            </div>
+            
+            <!-- 图表容器 -->
+            <div id="spc-chart" class="w-full h-[620px] border border-slate-100 rounded-lg"></div>
+        </section>
+
+        <!-- 第三部分：违规点与数据速查表 -->
+        <section class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <span class="bg-indigo-600 text-white w-6 h-6 rounded-full inline-flex items-center justify-center text-xs">3</span>
+                violations_df 失控记录表
+            </h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse text-sm">
+                    <thead>
+                        <tr class="bg-slate-100 text-slate-600 border-b border-slate-200">
+                            <th class="py-3 px-4 font-semibold">Subgroup ID</th>
+                            <th class="py-3 px-4 font-semibold">Subgroup Values</th>
+                            <th class="py-3 px-4 font-semibold">Mean (Xbar)</th>
+                            <th class="py-3 px-4 font-semibold">Control Limits</th>
+                            <th class="py-3 px-4 font-semibold text-red-600">Violations (违规判异)</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 font-mono text-xs">
+                        <tr class="hover:bg-slate-50 bg-red-50/50">
+                            <td class="py-3 px-4 font-bold text-slate-800">Subgroup 3</td>
+                            <td class="py-3 px-4 text-slate-600">[9.8, 10.1, 10.0, 9.9]</td>
+                            <td class="py-3 px-4">9.95</td>
+                            <td class="py-3 px-4 text-slate-500">LCL: 10.14</td>
+                            <td class="py-3 px-4 text-red-600 font-bold">低于下控制限 (LCL Violation)</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 bg-red-50/50">
+                            <td class="py-3 px-4 font-bold text-slate-800">Subgroup 5</td>
+                            <td class="py-3 px-4 text-slate-600">[10.1, 10.0, 10.2, 10.1]</td>
+                            <td class="py-3 px-4">10.10</td>
+                            <td class="py-3 px-4 text-slate-500">LCL: 10.14</td>
+                            <td class="py-3 px-4 text-red-600 font-bold">低于下控制限 (LCL Violation)</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 bg-red-50/50">
+                            <td class="py-3 px-4 font-bold text-slate-800">Subgroup 7</td>
+                            <td class="py-3 px-4 text-slate-600">[11.5, 11.2, 11.4, 11.3]</td>
+                            <td class="py-3 px-4">11.35</td>
+                            <td class="py-3 px-4 text-slate-500">UCL: 10.50</td>
+                            <td class="py-3 px-4 text-red-600 font-bold">超出上控制限 (UCL Violation)</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 bg-red-50/50">
+                            <td class="py-3 px-4 font-bold text-slate-800">Subgroup 8</td>
+                            <td class="py-3 px-4 text-slate-600">[10.0, 10.1, 9.9, 10.0]</td>
+                            <td class="py-3 px-4">10.00</td>
+                            <td class="py-3 px-4 text-slate-500">LCL: 10.14</td>
+                            <td class="py-3 px-4 text-red-600 font-bold">低于下控制限 (LCL Violation)</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 bg-red-50/50">
+                            <td class="py-3 px-4 font-bold text-slate-800">Subgroup 10</td>
+                            <td class="py-3 px-4 text-slate-600">[10.1, 10.2, 10.0, 10.1]</td>
+                            <td class="py-3 px-4">10.10</td>
+                            <td class="py-3 px-4 text-slate-500">LCL: 10.14</td>
+                            <td class="py-3 px-4 text-red-600 font-bold">低于下控制限 (LCL Violation)</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </div>
+
+    <!-- 脚本：计算并渲染 Plotly 双联图 -->
+    <script>
+        const subgroupPoints = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        const xbarValues = [10.25, 10.425, 9.95, 10.45, 10.1, 10.4, 11.35, 10.0, 10.2, 10.1];
+        const sValues = [0.129, 0.171, 0.129, 0.129, 0.082, 0.082, 0.129, 0.082, 0.082, 0.082];
+
+        // 常数及统计限
+        const cl_x = 10.322, ucl_x = 10.501, lcl_x = 10.144;
+        const cl_s = 0.110, ucl_s = 0.248, lcl_s = 0.000;
+
+        // 区分正常点与失控点颜色 (子群 3, 5, 7, 8, 10 均值越界)
+        const xbarColors = xbarValues.map(v => (v > ucl_x || v < lcl_x) ? '#dc2626' : '#0f172a');
+        const xbarSizes = xbarValues.map(v => (v > ucl_x || v < lcl_x) ? 10 : 7);
+
+        const traces = [
+            // --- 上方图 (Xbar Chart) ---
+            {
+                x: [1, 10], y: [ucl_x, ucl_x], mode: 'lines', name: 'UCL (10.50)',
+                line: { color: '#94a3b8', dash: 'dash', width: 1.5 }, xaxis: 'x', yaxis: 'y', hoverinfo: 'y+name'
+            },
+            {
+                x: [1, 10], y: [cl_x, cl_x], mode: 'lines', name: 'CL (10.32)',
+                line: { color: '#94a3b8', width: 1.5 }, xaxis: 'x', yaxis: 'y', hoverinfo: 'y+name'
+            },
+            {
+                x: [1, 10], y: [lcl_x, lcl_x], mode: 'lines', name: 'LCL (10.14)',
+                line: { color: '#94a3b8', dash: 'dash', width: 1.5 }, xaxis: 'x', yaxis: 'y', hoverinfo: 'y+name'
+            },
+            {
+                x: subgroupPoints, y: xbarValues, mode: 'lines+markers', name: '子群均值 (Xbar)',
+                line: { color: '#475569', width: 1 },
+                marker: { color: xbarColors, size: xbarSizes },
+                xaxis: 'x', yaxis: 'y'
+            },
+
+            // --- 下方图 (S Chart) ---
+            {
+                x: [1, 10], y: [ucl_s, ucl_s], mode: 'lines', name: 'S UCL (0.25)',
+                line: { color: '#94a3b8', dash: 'dash', width: 1.5 }, xaxis: 'x2', yaxis: 'y2', hoverinfo: 'y+name'
+            },
+            {
+                x: [1, 10], y: [cl_s, cl_s], mode: 'lines', name: 'S CL (0.11)',
+                line: { color: '#94a3b8', width: 1.5 }, xaxis: 'x2', yaxis: 'y2', hoverinfo: 'y+name'
+            },
+            {
+                x: [1, 10], y: [lcl_s, lcl_s], mode: 'lines', name: 'S LCL (0.00)',
+                line: { color: '#94a3b8', dash: 'dash', width: 1.5 }, xaxis: 'x2', yaxis: 'y2', hoverinfo: 'y+name'
+            },
+            {
+                x: subgroupPoints, y: sValues, mode: 'lines+markers', name: '子群标准差 (Std Dev S)',
+                line: { color: '#475569', width: 1 },
+                marker: { color: '#0f172a', size: 7 },
+                xaxis: 'x2', yaxis: 'y2'
+            }
+        ];
+
+        const layout = {
+            title: { text: 'Xbar-S 控制图 (Subgroup Size = 4)', font: { size: 16, color: '#1e293b' }, x: 0.02 },
+            showlegend: false,
+            plot_bgcolor: '#f8fafc',
+            paper_bgcolor: '#ffffff',
+            margin: { l: 50, r: 50, t: 60, b: 40 },
+            grid: { rows: 2, columns: 1, subplots: [['xy'], ['x2y2']], roworder: 'top to bottom' },
+            
+            // 上方图坐标轴
+            xaxis: { domain: [0, 1], showticklabels: false, zeroline: false, showgrid: false, linecolor: '#334155', mirror: true, range: [0.5, 10.5] },
+            yaxis: { domain: [0.38, 0.95], title: '', zeroline: false, showgrid: false, linecolor: '#334155', mirror: true, range: [9.7, 11.7] },
+            
+            // 下方图坐标轴
+            xaxis2: { domain: [0, 1], anchor: 'y2', dtick: 1, zeroline: false, showgrid: false, linecolor: '#334155', mirror: true, range: [0.5, 10.5] },
+            yaxis2: { domain: [0, 0.28], anchor: 'x2', title: '', zeroline: false, showgrid: false, linecolor: '#334155', mirror: true, range: [-0.05, 0.32] },
+
+            // 子图标题与右侧数值标注
+            annotations: [
+                { text: '<b>Xbar Chart (均值图)</b>', x: 0.5, y: 0.99, xref: 'paper', yref: 'paper', showarrow: false, font: { size: 14 } },
+                { text: '<b>S Chart (标准差图)</b>', x: 0.5, y: 0.31, xref: 'paper', yref: 'paper', showarrow: false, font: { size: 14 } },
+                // 上图右侧数值标签
+                { text: '10.50', x: 10.2, y: 10.50, xref: 'x', yref: 'y', showarrow: false, font: { size: 11, color: '#1e3a8a' } },
+                { text: '10.32', x: 10.2, y: 10.32, xref: 'x', yref: 'y', showarrow: false, font: { size: 11, color: '#1e3a8a' } },
+                { text: '10.14', x: 10.2, y: 10.14, xref: 'x', yref: 'y', showarrow: false, font: { size: 11, color: '#1e3a8a' } },
+                // 下图右侧数值标签
+                { text: '0.25', x: 10.2, y: 0.25, xref: 'x2', yref: 'y2', showarrow: false, font: { size: 11, color: '#1e3a8a' } },
+                { text: '0.11', x: 10.2, y: 0.11, xref: 'x2', yref: 'y2', showarrow: false, font: { size: 11, color: '#1e3a8a' } },
+                { text: '0.00', x: 10.2, y: 0.00, xref: 'x2', yref: 'y2', showarrow: false, font: { size: 11, color: '#1e3a8a' } }
+            ]
+        };
+
+        Plotly.newPlot('spc-chart', traces, layout, { responsive: true });
+    </script>
+</body>
+</html>
