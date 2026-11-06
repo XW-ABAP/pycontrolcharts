@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPC U 控制图核心算法与可视化看板</title>
+    <!-- 引入 Tailwind CSS 用于页面样式 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Plotly.js 用于渲染交互式控制图 -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        .flow-card {
+            transition: all 0.2s ease-in-out;
+        }
+        .flow-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .arrow-down {
+            width: 0; 
+            height: 0; 
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-top: 10px solid #94a3b8;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans p-6 md:p-10">
+
+    <div class="max-w-6xl mx-auto space-y-8">
+        
+        <!-- 头部标题 -->
+        <header class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-900">calc_u(data, area) 核心算法与失控分析看板</h1>
+                <p class="text-slate-500 text-sm mt-1">统计过程控制 (SPC) · 基于 _calc_u_limits 动态限值 (可变样本面积)</p>
+            </div>
+            <div class="flex flex-col gap-1 items-end">
+                <div class="bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg text-xs font-mono border border-blue-200">
+                    数据集: USPC p276 (NofLeaks / NofRadiators)
+                </div>
+                <div class="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-lg text-xs font-mono border border-emerald-200">
+                    样本容量 n = 变化 (32~58) | 全局 ū = 0.1379
+                </div>
+            </div>
+        </header>
+
+        <!-- 第一部分：算法流程图 -->
+        <section class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <h2 class="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                <span class="bg-indigo-600 text-white w-6 h-6 rounded-full inline-flex items-center justify-center text-xs">1</span>
+                核心算法计算流水线 (处理可变面积 Variable Area)
+            </h2>
+
+            <div class="flex flex-col items-center">
+                <!-- 阶段一：比率折算与加权中心线计算 -->
+                <div class="w-full max-w-3xl bg-slate-100 p-4 rounded-xl border border-slate-300 mt-1">
+                    <div class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 text-center">阶段一：单位缺陷计算与总均值 (u_bar)</div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="flow-card bg-white p-3.5 rounded-lg border border-slate-200 shadow-sm">
+                            <div class="text-xs text-slate-400 font-semibold">1. 各子组单位缺陷数 (u_i)</div>
+                            <div class="font-mono text-xs text-slate-700 mt-1">u_1 = 14 / 39 = <strong>0.3590</strong><br>u_2 = 4 / 45 = <strong>0.0889</strong></div>
+                            <div class="text-xs text-slate-500 mt-1 font-mono">u_i = defect_counts[i] / area_list[i]</div>
+                        </div>
+                        <div class="flow-card bg-white p-3.5 rounded-lg border border-slate-200 shadow-sm">
+                            <div class="text-xs text-slate-400 font-semibold">2. 总体中心线 (Center Line - u_bar)</div>
+                            <div class="font-mono text-sm font-bold text-slate-800 mt-1">u_bar = ∑defects / ∑area = 116 / 841 = <span class="text-blue-600">0.1379</span></div>
+                            <div class="text-xs text-slate-500 mt-1">传入 _calc_u_limits 的基准</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="h-6 w-0.5 bg-slate-400"></div>
+                <div class="arrow-down"></div>
+
+                <!-- 阶段二：动态限值 -->
+                <div class="w-full max-w-3xl bg-blue-50/60 p-5 rounded-xl border border-blue-200">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="bg-blue-600 text-white text-xs font-bold px-2.5 py-1 rounded">阶段二：单点限值计算 (针对可变面积 n_i)</span>
+                        <span class="text-xs font-mono text-blue-700">特点: 限值为阶梯状 (Staircase)</span>
+                    </div>
+
+                    <div class="bg-white p-3 rounded-lg border border-blue-100 mb-3 font-mono text-xs shadow-sm">
+                        <div class="text-slate-400 font-sans">局部标准误差 (随面积变化):</div>
+                        <div class="font-bold text-indigo-700 text-sm mt-0.5">
+                            limit_i = math.sqrt(u_bar / area_i)
+                        </div>
+                        <div class="text-slate-500 text-[11px] mt-1 font-sans">示例点 1 (n=39): limit = √(0.1379 / 39) = 0.0594 → UCL = 0.3163</div>
+                        <div class="text-slate-500 text-[11px] font-sans">示例点 11 (n=32): limit = √(0.1379 / 32) = 0.0657 → UCL = 0.3349</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 第二部分：实时 Plotly 图表渲染 -->
+        <section class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <div class="flex justify-between items-center mb-4">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <span class="bg-indigo-600 text-white w-6 h-6 rounded-full inline-flex items-center justify-center text-xs">2</span>
+                        U 控制图实时交互渲染 (阶梯形警戒线 + 异常点高亮)
+                    </h2>
+                    <p class="text-xs text-slate-500 mt-1">展示 _calc_u_limits 输出的动态参考限。第 1 点 (0.359) 越界触发 OVER_UCL 失控报警</p>
+                </div>
+            </div>
+            <div id="spc-u-chart" class="w-full h-[520px] border border-slate-100 rounded-lg"></div>
+        </section>
+
+    </div>
+
+    <script>
+        const xLabels = [
+            '3.6.1948', '4.6.1948', '5.6.1948', '6.6.1948', '7.6.1948',
+            '10.6.1948', '11.6.1948', '12.6.1948', '13.6.1948', '14.6.1948',
+            '17.6.1948', '18.6.1948', '19.6.1948', '20.6.1948', '24.6.1948',
+            '25.6.1948', '26.6.1948', '27.6.1948'
+        ];
+        const uValues = [0.359, 0.0889, 0.1087, 0.2708, 0.15, 0.0345, 0.08, 0.22, 0.16, 0.2, 0.0938, 0.22, 0.0303, 0.06, 0.12, 0.16, 0.1, 0.04];
+        const uclArray = [0.3163, 0.304, 0.3022, 0.2987, 0.3141, 0.2842, 0.2955, 0.2955, 0.2955, 0.2955, 0.3349, 0.2955, 0.3319, 0.2955, 0.2955, 0.2955, 0.2955, 0.2955];
+        const sigma2Array = [0.2568, 0.2486, 0.2474, 0.2451, 0.2554, 0.2354, 0.243, 0.243, 0.243, 0.243, 0.2692, 0.243, 0.2672, 0.243, 0.243, 0.243, 0.243, 0.243];
+        const sigma1Array = [0.1974, 0.1933, 0.1927, 0.1915, 0.1966, 0.1867, 0.1904, 0.1904, 0.1904, 0.1904, 0.2036, 0.1904, 0.2026, 0.1904, 0.1904, 0.1904, 0.1904, 0.1904];
+        
+        const clValue = 0.1379;
+        
+        // 违规点
+        const violationIndices = [0]; 
+        const markerColors = uValues.map((_, i) => violationIndices.includes(i) ? '#ff0000' : '#0f172a');
+        const markerSymbols = uValues.map((_, i) => violationIndices.includes(i) ? 'square' : 'circle');
+        const markerSizes = uValues.map((_, i) => violationIndices.includes(i) ? 8 : 6);
+
+        const traces = [
+            {
+                x: xLabels, y: uclArray, mode: 'lines', name: 'UCL',
+                line: { color: '#ef4444', dash: 'dash', width: 1.5, shape: 'hv' },
+                hoverinfo: 'y+name'
+            },
+            {
+                x: xLabels, y: sigma2Array, mode: 'lines', name: '+2σ',
+                line: { color: '#f59e0b', dash: 'dot', width: 1, shape: 'hv' },
+                hoverinfo: 'y+name'
+            },
+            {
+                x: xLabels, y: sigma1Array, mode: 'lines', name: '+1σ',
+                line: { color: '#93c5fd', dash: 'dot', width: 1, shape: 'hv' },
+                hoverinfo: 'y+name'
+            },
+            {
+                x: [xLabels[0], xLabels[xLabels.length-1]], y: [clValue, clValue], mode: 'lines', name: 'CL (0.1379)',
+                line: { color: '#475569', width: 1.8 },
+                hoverinfo: 'y+name'
+            },
+            {
+                x: [xLabels[0], xLabels[xLabels.length-1]], y: [0, 0], mode: 'lines', name: 'LCL (0.00)',
+                line: { color: '#10b981', dash: 'dash', width: 1.5 },
+                hoverinfo: 'y+name'
+            },
+            {
+                x: xLabels, y: uValues, mode: 'lines+markers', name: '单位缺陷 (U)',
+                line: { color: '#64748b', width: 1.2 },
+                marker: { 
+                    color: markerColors, 
+                    symbol: markerSymbols,
+                    size: markerSizes,
+                    line: { color: '#ffffff', width: 1 }
+                },
+                hovertemplate: '日期: %{x}<br>U值: %{y:.4f}<extra></extra>'
+            }
+        ];
+
+        const layout = {
+            title: { text: 'U 控制图 (包含面积可变导致的阶梯状限值)', font: { size: 16, color: '#1e293b' }, x: 0.02 },
+            showlegend: true,
+            legend: { orientation: 'h', x: 0.01, y: 1.12, font: { size: 11 } },
+            plot_bgcolor: '#f8fafc',
+            paper_bgcolor: '#ffffff',
+            margin: { l: 60, r: 85, t: 80, b: 60 },
+            xaxis: {
+                zeroline: false, showgrid: true, gridcolor: '#f1f5f9', linecolor: '#334155', mirror: true,
+                title: { text: '日期 (Date)', font: { size: 12 } }, tickangle: 45
+            },
+            yaxis: {
+                zeroline: true, zerolinecolor: '#94a3b8', showgrid: true, gridcolor: '#f1f5f9', linecolor: '#334155', mirror: true,
+                title: { text: '单位缺陷数 (U)', font: { size: 12 } }
+            },
+            annotations: [
+                {
+                    x: xLabels[0], y: uValues[0], text: '点 1 违规报警<br>(0.359 > 0.316)',
+                    showarrow: true, arrowhead: 2, ax: 45, ay: -30,
+                    bgcolor: '#fee2e2', bordercolor: '#ef4444', font: { size: 11, color: '#991b1b' }
+                }
+            ]
+        };
+
+        Plotly.newPlot('spc-u-chart', traces, layout, { responsive: true });
+    </script>
+</body>
+</html>

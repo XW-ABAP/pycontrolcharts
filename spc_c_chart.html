@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPC C 控制图核心算法与可视化看板</title>
+    <!-- 引入 Tailwind CSS 用于页面样式 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Plotly.js 用于渲染交互式控制图 -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        .flow-card {
+            transition: all 0.2s ease-in-out;
+        }
+        .flow-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .arrow-down {
+            width: 0; 
+            height: 0; 
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-top: 10px solid #94a3b8;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans p-6 md:p-10">
+
+    <div class="max-w-6xl mx-auto space-y-8">
+        
+        <!-- 头部标题 -->
+        <header class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-900">calc_c(data) 核心算法与失控分析看板</h1>
+                <p class="text-slate-500 text-sm mt-1">统计过程控制 (SPC) · 基于 _calc_c_limits 内部开平方限值推导机制</p>
+            </div>
+            <div class="flex flex-col gap-1 items-end">
+                <div class="bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg text-xs font-mono border border-blue-200">
+                    缺陷数: [6, 2, 4, 8, 5, 4, 23, 7, 3, 5, 12, 7, 10, 5, ...] (共24项)
+                </div>
+                <div class="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-lg text-xs font-mono border border-emerald-200">
+                    样本总数: k = 24 | 全局 c̄ = 5.5417
+                </div>
+            </div>
+        </header>
+
+        <!-- 第一部分：算法流程图 -->
+        <section class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <h2 class="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                <span class="bg-indigo-600 text-white w-6 h-6 rounded-full inline-flex items-center justify-center text-xs">1</span>
+                核心算法计算流水线 (阶段二对接 _calc_c_limits 逻辑)
+            </h2>
+
+            <div class="flex flex-col items-center">
+                <!-- 输入层 -->
+                <div class="flow-card bg-slate-800 text-white px-6 py-3 rounded-lg font-mono text-sm shadow text-center">
+                    输入: defect_counts = USPC p220 伤害频次测试数据 (24 个月)
+                </div>
+                
+                <div class="h-6 w-0.5 bg-slate-400"></div>
+                <div class="arrow-down"></div>
+
+                <!-- 阶段一：保留原有计算逻辑 -->
+                <div class="w-full max-w-3xl bg-slate-100 p-4 rounded-xl border border-slate-300 mt-1">
+                    <div class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 text-center">阶段一：均值与基准中心线计算</div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="flow-card bg-white p-3.5 rounded-lg border border-slate-200 shadow-sm text-center">
+                            <div class="text-xs text-slate-400 font-semibold">1. 基础数据特征</div>
+                            <div class="font-mono text-xs text-slate-700 mt-1">恒定检验面积，考察单位面积缺陷数</div>
+                            <div class="text-xs text-slate-500 mt-1 font-mono">适用泊松分布 (Poisson Distribution)</div>
+                        </div>
+                        <div class="flow-card bg-white p-3.5 rounded-lg border border-slate-200 shadow-sm text-center">
+                            <div class="text-xs text-slate-400 font-semibold">2. 中心线 (Center Line - c_bar)</div>
+                            <div class="font-mono text-sm font-bold text-slate-800 mt-1">c_bar = ∑defects / k = 133 / 24 = <span class="text-blue-600">5.5417</span></div>
+                            <div class="text-xs text-slate-500 mt-1">作为传入 _calc_c_limits 的核心参数</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="h-6 w-0.5 bg-slate-400"></div>
+                <div class="arrow-down"></div>
+
+                <!-- 阶段二：替换为 _calc_c_limits 的 limit 计算与截断逻辑 -->
+                <div class="w-full max-w-3xl bg-blue-50/60 p-5 rounded-xl border border-blue-200">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="bg-blue-600 text-white text-xs font-bold px-2.5 py-1 rounded">阶段二：_calc_c_limits 动态限值推导与截断计算</span>
+                        <span class="text-xs font-mono text-blue-700">入参: c_bar = 5.5417</span>
+                    </div>
+
+                    <!-- 核心算子 -->
+                    <div class="bg-white p-3 rounded-lg border border-blue-100 mb-3 font-mono text-xs shadow-sm">
+                        <div class="text-slate-400 font-sans">局部标准误差步长 (基于泊松分布的 limit 计算):</div>
+                        <div class="font-bold text-indigo-700 text-sm mt-0.5">
+                            limit = math.sqrt(c_bar) = math.sqrt(5.5417) = <span class="text-blue-600">2.3541</span>
+                        </div>
+                        <div class="text-slate-500 text-[11px] mt-1 font-sans">※ SPC规则: 泊松分布的标准差等于均值的平方根</div>
+                    </div>
+
+                    <!-- 截断计算卡片 -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono text-xs">
+                        <div class="bg-white p-3 rounded border border-blue-100 space-y-1.5">
+                            <span class="text-slate-400 block font-sans">上界组:</span>
+                            <div>uclx = c_bar + 3*limit = <strong class="text-red-600">12.6039</strong></div>
+                            <div>usigma2x = c_bar + 2*limit = <strong>10.2499</strong></div>
+                            <div>usigma1x = c_bar + 1*limit = <strong>7.8958</strong></div>
+                        </div>
+                        <div class="bg-white p-3 rounded border border-blue-100 space-y-1.5">
+                            <span class="text-slate-400 block font-sans">下界组 (限制最小为 0.0):</span>
+                            <div>lsigma1x = max(c_bar - 1*limit, 0.0) = <strong>3.1876</strong></div>
+                            <div>lsigma2x = max(c_bar - 2*limit, 0.0) = <strong>0.8335</strong></div>
+                            <div>lclx = max(c_bar - 3*limit, 0.0) = <strong class="text-emerald-700">0.0000</strong></div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3 bg-amber-50 p-2.5 rounded text-xs font-mono text-amber-800 border border-amber-200">
+                        字典占位标识: 'var_ucl': 0, 'var_cl': 0, 'var_lcl': 0 (C 图无单独极差变异子图)
+                    </div>
+                </div>
+
+                <div class="h-6 w-0.5 bg-slate-400"></div>
+                <div class="arrow-down"></div>
+
+                <!-- 阶段三：保留原输出打包 -->
+                <div class="flow-card bg-emerald-600 text-white px-8 py-3 rounded-lg font-medium text-sm shadow text-center">
+                    阶段三：应用 Nelson Rules 判异 (识别 10 个违规点) ➔ 生成 df_result ➔ 渲染可视化视图
+                </div>
+            </div>
+        </section>
+
+        <!-- 第二部分：实时 Plotly 图表渲染 -->
+        <section class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <div class="flex justify-between items-center mb-4">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <span class="bg-indigo-600 text-white w-6 h-6 rounded-full inline-flex items-center justify-center text-xs">2</span>
+                        C 控制图实时交互渲染 (包含测试程序的判定结果)
+                    </h2>
+                    <p class="text-xs text-slate-500 mt-1">展示 _calc_c_limits 输出的参考限，第 7 点超差 (方块)，及连续 9 点低于均值 (方块)</p>
+                </div>
+                <span class="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded">结合六区线与违规点判定呈现</span>
+            </div>
+            
+            <!-- 图表容器 -->
+            <div id="spc-c-chart" class="w-full h-[520px] border border-slate-100 rounded-lg"></div>
+        </section>
+
+        <!-- 第三部分：源码返回值字典对照表 -->
+        <section class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <span class="bg-indigo-600 text-white w-6 h-6 rounded-full inline-flex items-center justify-center text-xs">3</span>
+                _calc_c_limits 内部变量与字典返回值对照表
+            </h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse text-sm">
+                    <thead>
+                        <tr class="bg-slate-100 text-slate-600 border-b border-slate-200 text-xs">
+                            <th class="py-3 px-4 font-semibold">字典键名 (Dict Key)</th>
+                            <th class="py-3 px-4 font-semibold">源码内部变量</th>
+                            <th class="py-3 px-4 font-semibold">截断计算公式</th>
+                            <th class="py-3 px-4 font-semibold">当前数值</th>
+                            <th class="py-3 px-4 font-semibold">SPC 物理意义</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 font-mono text-xs">
+                        <tr class="hover:bg-slate-50">
+                            <td class="py-2.5 px-4 font-bold text-red-600">ucl</td>
+                            <td class="py-2.5 px-4 font-sans">uclx</td>
+                            <td class="py-2.5 px-4">c_bar + 3 * limit</td>
+                            <td class="py-2.5 px-4 font-bold">12.6039</td>
+                            <td class="py-2.5 px-4 font-sans text-slate-600">控制上限（+3σ 边界），超出判定为失控</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="py-2.5 px-4 text-amber-600">sigma_2_upper</td>
+                            <td class="py-2.5 px-4 font-sans">usigma2x</td>
+                            <td class="py-2.5 px-4">c_bar + 2 * limit</td>
+                            <td class="py-2.5 px-4">10.2499</td>
+                            <td class="py-2.5 px-4 font-sans text-slate-600">Zone A/B 分界线（+2σ 辅助预警线）</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="py-2.5 px-4 text-blue-600">sigma_1_upper</td>
+                            <td class="py-2.5 px-4 font-sans">usigma1x</td>
+                            <td class="py-2.5 px-4">c_bar + 1 * limit</td>
+                            <td class="py-2.5 px-4">7.8958</td>
+                            <td class="py-2.5 px-4 font-sans text-slate-600">Zone B/C 分界线（+1σ 辅助预警线）</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 bg-slate-50/50">
+                            <td class="py-2.5 px-4 font-bold text-slate-800">center_line</td>
+                            <td class="py-2.5 px-4 font-sans">clx</td>
+                            <td class="py-2.5 px-4">c_bar</td>
+                            <td class="py-2.5 px-4 font-bold">5.5417</td>
+                            <td class="py-2.5 px-4 font-sans text-slate-600">过程中心基准线（平均缺陷数 c̄）</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="py-2.5 px-4 text-blue-600">sigma_1_lower</td>
+                            <td class="py-2.5 px-4 font-sans">lsigma1x</td>
+                            <td class="py-2.5 px-4">max(c_bar - 1 * limit, 0.0)</td>
+                            <td class="py-2.5 px-4">3.1876</td>
+                            <td class="py-2.5 px-4 font-sans text-slate-600">Zone C/B 分界线（-1σ 辅助预警线）</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="py-2.5 px-4 text-amber-600">sigma_2_lower</td>
+                            <td class="py-2.5 px-4 font-sans">lsigma2x</td>
+                            <td class="py-2.5 px-4">max(c_bar - 2 * limit, 0.0)</td>
+                            <td class="py-2.5 px-4">0.8335</td>
+                            <td class="py-2.5 px-4 font-sans text-slate-600">Zone B/A 分界线（-2σ 辅助预警线）</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="py-2.5 px-4 font-bold text-emerald-700">lcl</td>
+                            <td class="py-2.5 px-4 font-sans">lclx</td>
+                            <td class="py-2.5 px-4">max(c_bar - 3 * limit, 0.0)</td>
+                            <td class="py-2.5 px-4 font-bold">0.0000</td>
+                            <td class="py-2.5 px-4 font-sans text-slate-600">控制下限（-3σ 计算值为负，截断置 0）</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 text-slate-400">
+                            <td class="py-2.5 px-4">var_ucl / cl / lcl</td>
+                            <td class="py-2.5 px-4 font-sans">-</td>
+                            <td class="py-2.5 px-4">0</td>
+                            <td class="py-2.5 px-4">0.0000</td>
+                            <td class="py-2.5 px-4 font-sans">占位字段，表明 C 控制图无极差子图</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </div>
+
+    <!-- 脚本：渲染 Plotly C 控制图 -->
+    <script>
+        const xLabels = [
+            '1-01', '1-02', '1-03', '1-04', '1-05', '1-06',
+            '1-07', '1-08', '1-09', '1-10', '1-11', '1-12',
+            '2-01', '2-02', '2-03', '2-04', '2-05', '2-06',
+            '2-07', '2-08', '2-09', '2-10', '2-11', '2-12'
+        ];
+        
+        const cValues = [
+            6, 2, 4, 8, 5, 4, 23, 7, 3, 5, 12, 7,
+            10, 5, 9, 4, 3, 2, 2, 1, 3, 4, 3, 1
+        ];
+        
+        // _calc_c_limits 字典推导输出值
+        const limits = {
+            ucl: 12.6039,
+            sigma_2_upper: 10.2499,
+            sigma_1_upper: 7.8958,
+            center_line: 5.5417,
+            sigma_1_lower: 3.1876,
+            sigma_2_lower: 0.8335,
+            lcl: 0.0000
+        };
+
+        // 包含实际运行出的10个异常点索引 (0-based): 
+        // 6 为越过 UCL， 15-23 为连续低于平均值 (X_UNDER_AVG)
+        const violationIndices = [6, 15, 16, 17, 18, 19, 20, 21, 22, 23];
+
+        // 违规点为红色正方形，正常点为黑色圆形
+        const markerColors = cValues.map((_, i) => violationIndices.includes(i) ? '#ef4444' : '#0f172a');
+        const markerSymbols = cValues.map((_, i) => violationIndices.includes(i) ? 'square' : 'circle');
+        const markerSizes = cValues.map((_, i) => violationIndices.includes(i) ? 8 : 6);
+
+        const xIndices = Array.from({length: cValues.length}, (_, i) => i + 1);
+
+        const traces = [
+            // UCL 虚线 (+3σ)
+            {
+                x: [1, 24], y: [limits.ucl, limits.ucl], mode: 'lines', name: 'UCL (12.60)',
+                line: { color: '#ef4444', dash: 'dash', width: 1.5 }, hoverinfo: 'y+name'
+            },
+            // +2σ 虚线
+            {
+                x: [1, 24], y: [limits.sigma_2_upper, limits.sigma_2_upper], mode: 'lines', name: '+2σ (10.25)',
+                line: { color: '#f59e0b', dash: 'dot', width: 1 }, hoverinfo: 'y+name'
+            },
+            // +1σ 虚线
+            {
+                x: [1, 24], y: [limits.sigma_1_upper, limits.sigma_1_upper], mode: 'lines', name: '+1σ (7.90)',
+                line: { color: '#93c5fd', dash: 'dot', width: 1 }, hoverinfo: 'y+name'
+            },
+            // 中心线 CL
+            {
+                x: [1, 24], y: [limits.center_line, limits.center_line], mode: 'lines', name: 'CL (5.54)',
+                line: { color: '#475569', width: 1.8 }, hoverinfo: 'y+name'
+            },
+            // -1σ 虚线
+            {
+                x: [1, 24], y: [limits.sigma_1_lower, limits.sigma_1_lower], mode: 'lines', name: '-1σ (3.19)',
+                line: { color: '#93c5fd', dash: 'dot', width: 1 }, hoverinfo: 'y+name'
+            },
+            // -2σ 虚线
+            {
+                x: [1, 24], y: [limits.sigma_2_lower, limits.sigma_2_lower], mode: 'lines', name: '-2σ (0.83)',
+                line: { color: '#f59e0b', dash: 'dot', width: 1 }, hoverinfo: 'y+name'
+            },
+            // LCL 虚线 (-3σ)
+            {
+                x: [1, 24], y: [limits.lcl, limits.lcl], mode: 'lines', name: 'LCL (0.00)',
+                line: { color: '#10b981', dash: 'dash', width: 1.5 }, hoverinfo: 'y+name'
+            },
+            // 连接折线
+            {
+                x: xIndices, y: cValues, mode: 'lines',
+                line: { color: '#94a3b8', width: 1 }, showlegend: false, hoverinfo: 'skip'
+            },
+            // 散点标记 (带有条件判断格式)
+            {
+                x: xIndices, y: cValues, mode: 'markers', name: '缺陷数 (C)',
+                text: xLabels,
+                marker: { 
+                    color: markerColors,
+                    symbol: markerSymbols,
+                    size: markerSizes,
+                    line: { color: '#ffffff', width: 0.5 }
+                },
+                hovertemplate: '月份: %{text}<br>缺陷数: %{y}<extra></extra>'
+            }
+        ];
+
+        const layout = {
+            title: { text: 'C 控制图 (USPC p220 伤害频次测试)', font: { size: 16, color: '#1e293b' }, x: 0.02 },
+            showlegend: true,
+            legend: { orientation: 'h', x: 0.01, y: 1.12, font: { size: 11 } },
+            plot_bgcolor: '#f8fafc',
+            paper_bgcolor: '#ffffff',
+            margin: { l: 60, r: 85, t: 80, b: 60 },
+            xaxis: {
+                tickmode: 'array',
+                tickvals: xIndices,
+                ticktext: xLabels,
+                zeroline: false,
+                showgrid: true,
+                gridcolor: '#f1f5f9',
+                linecolor: '#334155',
+                mirror: true,
+                title: { text: '月份 (Month)', font: { size: 12 } }
+            },
+            yaxis: {
+                zeroline: true,
+                zerolinecolor: '#94a3b8',
+                showgrid: true,
+                gridcolor: '#f1f5f9',
+                linecolor: '#334155',
+                mirror: true,
+                range: [-2, 26],
+                title: { text: '伤害频次 / 缺陷数 (Count)', font: { size: 12 } }
+            },
+            annotations: [
+                { text: '<b>UCL: 12.60</b>', x: 24, y: limits.ucl, xanchor: 'left', showarrow: false, font: { size: 10, color: '#dc2626' } },
+                { text: '+2σ: 10.25', x: 24, y: limits.sigma_2_upper, xanchor: 'left', showarrow: false, font: { size: 9, color: '#d97706' } },
+                { text: '+1σ: 7.90', x: 24, y: limits.sigma_1_upper, xanchor: 'left', showarrow: false, font: { size: 9, color: '#2563eb' } },
+                { text: '<b>CL: 5.54</b>', x: 24, y: limits.center_line, xanchor: 'left', showarrow: false, font: { size: 10, color: '#1e293b' } },
+                { text: '-1σ: 3.19', x: 24, y: limits.sigma_1_lower, xanchor: 'left', showarrow: false, font: { size: 9, color: '#2563eb' } },
+                { text: '-2σ: 0.83', x: 24, y: limits.sigma_2_lower, xanchor: 'left', showarrow: false, font: { size: 9, color: '#d97706' } },
+                { text: '<b>LCL: 0.00</b>', x: 24, y: limits.lcl, xanchor: 'left', showarrow: false, font: { size: 10, color: '#059669' } },
+                {
+                    x: 7, y: 23, text: '1-07 越出界限<br>(> UCL 12.60)',
+                    showarrow: true, arrowhead: 2, ax: 20, ay: -30,
+                    bgcolor: '#fee2e2', bordercolor: '#ef4444', font: { size: 10, color: '#991b1b' }
+                },
+                {
+                    x: 20, y: 1, text: '连续点低于中心线<br>(Rule Violation)',
+                    showarrow: true, arrowhead: 2, ax: 0, ay: 40,
+                    bgcolor: '#fee2e2', bordercolor: '#ef4444', font: { size: 10, color: '#991b1b' }
+                }
+            ]
+        };
+
+        Plotly.newPlot('spc-c-chart', traces, layout, { responsive: true });
+    </script>
+</body>
+</html>

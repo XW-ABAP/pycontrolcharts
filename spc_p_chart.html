@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPC P 控制图核心算法与可视化看板</title>
+    <!-- 引入 Tailwind CSS 用于页面样式 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Plotly.js 用于渲染交互式控制图 -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        .flow-card {
+            transition: all 0.2s ease-in-out;
+        }
+        .flow-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .arrow-down {
+            width: 0; 
+            height: 0; 
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-top: 10px solid #94a3b8;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans p-6 md:p-10">
+
+    <div class="max-w-6xl mx-auto space-y-8">
+        
+        <!-- 头部标题 -->
+        <header class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-900">calc_p(data, sample_size) 核心算法与失控分析看板</h1>
+                <p class="text-slate-500 text-sm mt-1">统计过程控制 (SPC) · 基于 _calc_p_limits 内部单点限值推导机制</p>
+            </div>
+            <div class="flex flex-col gap-1 items-end">
+                <div class="bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg text-xs font-mono border border-blue-200">
+                    缺陷数: [3, 2, 15, 1, 5, 2, 18, 2, 1, 4]
+                </div>
+                <div class="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-lg text-xs font-mono border border-emerald-200">
+                    样本容量: n = 100 | 全局 p̄ = 0.0530
+                </div>
+            </div>
+        </header>
+
+        <!-- 第一部分：算法流程图 -->
+        <section class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <h2 class="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                <span class="bg-indigo-600 text-white w-6 h-6 rounded-full inline-flex items-center justify-center text-xs">1</span>
+                核心算法计算流水线 (阶段二对接 _calc_p_limits 逻辑)
+            </h2>
+
+            <div class="flex flex-col items-center">
+                <!-- 输入层 -->
+                <div class="flow-card bg-slate-800 text-white px-6 py-3 rounded-lg font-mono text-sm shadow text-center">
+                    输入: defect_counts = [3, 2, 15, 1, 5, 2, 18, 2, 1, 4], sample_sizes = [100 × 10]
+                </div>
+                
+                <div class="h-6 w-0.5 bg-slate-400"></div>
+                <div class="arrow-down"></div>
+
+                <!-- 阶段一：保留原有计算逻辑 -->
+                <div class="w-full max-w-3xl bg-slate-100 p-4 rounded-xl border border-slate-300 mt-1">
+                    <div class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 text-center">阶段一：比率折算与加权中心线计算 (保持原逻辑)</div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="flow-card bg-white p-3.5 rounded-lg border border-slate-200 shadow-sm">
+                            <div class="text-xs text-slate-400 font-semibold">1. 各子组不合格率 (value / p_i)</div>
+                            <div class="font-mono text-xs text-slate-700 mt-1">p = [0.03, 0.02, <strong>0.15</strong>, 0.01, 0.05, 0.02, <strong>0.18</strong>, 0.02, 0.01, 0.04]</div>
+                            <div class="text-xs text-slate-500 mt-1 font-mono">p_i = defect_counts[i] / sample_sizes[i]</div>
+                        </div>
+                        <div class="flow-card bg-white p-3.5 rounded-lg border border-slate-200 shadow-sm">
+                            <div class="text-xs text-slate-400 font-semibold">2. 中心线 (Center Line - p_bar)</div>
+                            <div class="font-mono text-sm font-bold text-slate-800 mt-1">p_bar = ∑defects / ∑n = 53 / 1000 = <span class="text-blue-600">0.0530</span></div>
+                            <div class="text-xs text-slate-500 mt-1">作为传入 _calc_p_limits 的 proportion 基准</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="h-6 w-0.5 bg-slate-400"></div>
+                <div class="arrow-down"></div>
+
+                <!-- 阶段二：替换为 _calc_p_limits 的 limit 计算与截断逻辑 -->
+                <div class="w-full max-w-3xl bg-blue-50/60 p-5 rounded-xl border border-blue-200">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="bg-blue-600 text-white text-xs font-bold px-2.5 py-1 rounded">阶段二：_calc_p_limits 动态限值与截断计算</span>
+                        <span class="text-xs font-mono text-blue-700">入参: proportion = 0.0530, sample_size = 100</span>
+                    </div>
+
+                    <!-- 核心算子 -->
+                    <div class="bg-white p-3 rounded-lg border border-blue-100 mb-3 font-mono text-xs shadow-sm">
+                        <div class="text-slate-400 font-sans">局部标准误差步长 (limit 计算):</div>
+                        <div class="font-bold text-indigo-700 text-sm mt-0.5">
+                            limit = math.sqrt(proportion * (1 - proportion) / sample_size) = <span class="text-blue-600">0.02240</span>
+                        </div>
+                        <div class="text-slate-500 text-[11px] mt-1 font-sans">※ 边界保护: 若 sample_size &le; 0，直接返回 0 限值熔断字典</div>
+                    </div>
+
+                    <!-- 截断计算卡片 -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono text-xs">
+                        <div class="bg-white p-3 rounded border border-blue-100 space-y-1.5">
+                            <span class="text-slate-400 block font-sans">上界组 (限制最大为 1.0):</span>
+                            <div>uclx = min(p + 3*limit, 1.0) = <strong class="text-red-600">0.1202</strong></div>
+                            <div>usigma2x = min(p + 2*limit, 1.0) = <strong>0.0978</strong></div>
+                            <div>usigma1x = min(p + 1*limit, 1.0) = <strong>0.0754</strong></div>
+                        </div>
+                        <div class="bg-white p-3 rounded border border-blue-100 space-y-1.5">
+                            <span class="text-slate-400 block font-sans">下界组 (限制最小为 0.0):</span>
+                            <div>lsigma1x = max(p - 1*limit, 0.0) = <strong>0.0306</strong></div>
+                            <div>lsigma2x = max(p - 2*limit, 0.0) = <strong>0.0082</strong></div>
+                            <div>lclx = max(p - 3*limit, 0.0) = <strong class="text-emerald-700">0.0000</strong></div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3 bg-amber-50 p-2.5 rounded text-xs font-mono text-amber-800 border border-amber-200">
+                        字典占位标识: 'var_ucl': 0, 'var_cl': 0, 'var_lcl': 0 (P 图无单独极差变异子图)
+                    </div>
+                </div>
+
+                <div class="h-6 w-0.5 bg-slate-400"></div>
+                <div class="arrow-down"></div>
+
+                <!-- 阶段三：保留原输出打包 -->
+                <div class="flow-card bg-emerald-600 text-white px-8 py-3 rounded-lg font-medium text-sm shadow">
+                    阶段三：组装 df_result ➔ 传递给 plot_control_chart(ChartType.P) 生成 Plotly 视图
+                </div>
+            </div>
+        </section>
+
+        <!-- 第二部分：实时 Plotly 图表渲染 -->
+        <section class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <div class="flex justify-between items-center mb-4">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <span class="bg-indigo-600 text-white w-6 h-6 rounded-full inline-flex items-center justify-center text-xs">2</span>
+                        P 控制图实时交互渲染 (完整六区警戒线 + 异常高亮)
+                    </h2>
+                    <p class="text-xs text-slate-500 mt-1">展示 _calc_p_limits 输出的参考限，第 3 点与第 7 点越界触发 Rule 1 失控报警</p>
+                </div>
+                <span class="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded">单子图模式 · 支持缩放与悬停探查</span>
+            </div>
+            
+            <!-- 图表容器 -->
+            <div id="spc-p-chart" class="w-full h-[520px] border border-slate-100 rounded-lg"></div>
+        </section>
+
+        <!-- 第三部分：源码返回值字典对照表 -->
+        <section class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <span class="bg-indigo-600 text-white w-6 h-6 rounded-full inline-flex items-center justify-center text-xs">3</span>
+                _calc_p_limits 内部变量与字典返回值对照表
+            </h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse text-sm">
+                    <thead>
+                        <tr class="bg-slate-100 text-slate-600 border-b border-slate-200 text-xs">
+                            <th class="py-3 px-4 font-semibold">字典键名 (Dict Key)</th>
+                            <th class="py-3 px-4 font-semibold">源码内部变量</th>
+                            <th class="py-3 px-4 font-semibold">截断计算公式</th>
+                            <th class="py-3 px-4 font-semibold">当前数值</th>
+                            <th class="py-3 px-4 font-semibold">SPC 物理意义</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 font-mono text-xs">
+                        <tr class="hover:bg-slate-50">
+                            <td class="py-2.5 px-4 font-bold text-red-600">ucl</td>
+                            <td class="py-2.5 px-4 font-sans">uclx</td>
+                            <td class="py-2.5 px-4">min(proportion + 3 * limit, 1.0)</td>
+                            <td class="py-2.5 px-4 font-bold">0.1202</td>
+                            <td class="py-2.5 px-4 font-sans text-slate-600">控制上限（+3σ 边界），超出判定为失控</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="py-2.5 px-4 text-amber-600">sigma_2_upper</td>
+                            <td class="py-2.5 px-4 font-sans">usigma2x</td>
+                            <td class="py-2.5 px-4">min(proportion + 2 * limit, 1.0)</td>
+                            <td class="py-2.5 px-4">0.0978</td>
+                            <td class="py-2.5 px-4 font-sans text-slate-600">Zone A/B 分界线（+2σ 辅助预警线）</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="py-2.5 px-4 text-blue-600">sigma_1_upper</td>
+                            <td class="py-2.5 px-4 font-sans">usigma1x</td>
+                            <td class="py-2.5 px-4">min(proportion + 1 * limit, 1.0)</td>
+                            <td class="py-2.5 px-4">0.0754</td>
+                            <td class="py-2.5 px-4 font-sans text-slate-600">Zone B/C 分界线（+1σ 辅助预警线）</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 bg-slate-50/50">
+                            <td class="py-2.5 px-4 font-bold text-slate-800">center_line</td>
+                            <td class="py-2.5 px-4 font-sans">clx</td>
+                            <td class="py-2.5 px-4">proportion</td>
+                            <td class="py-2.5 px-4 font-bold">0.0530</td>
+                            <td class="py-2.5 px-4 font-sans text-slate-600">过程中心基准线（平均不合格品率 p̄）</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="py-2.5 px-4 text-blue-600">sigma_1_lower</td>
+                            <td class="py-2.5 px-4 font-sans">lsigma1x</td>
+                            <td class="py-2.5 px-4">max(proportion - 1 * limit, 0.0)</td>
+                            <td class="py-2.5 px-4">0.0306</td>
+                            <td class="py-2.5 px-4 font-sans text-slate-600">Zone C/B 分界线（-1σ 辅助预警线）</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="py-2.5 px-4 text-amber-600">sigma_2_lower</td>
+                            <td class="py-2.5 px-4 font-sans">lsigma2x</td>
+                            <td class="py-2.5 px-4">max(proportion - 2 * limit, 0.0)</td>
+                            <td class="py-2.5 px-4">0.0082</td>
+                            <td class="py-2.5 px-4 font-sans text-slate-600">Zone B/A 分界线（-2σ 辅助预警线）</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="py-2.5 px-4 font-bold text-emerald-700">lcl</td>
+                            <td class="py-2.5 px-4 font-sans">lclx</td>
+                            <td class="py-2.5 px-4">max(proportion - 3 * limit, 0.0)</td>
+                            <td class="py-2.5 px-4 font-bold">0.0000</td>
+                            <td class="py-2.5 px-4 font-sans text-slate-600">控制下限（-3σ 计算值为负，截断置 0）</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 text-slate-400">
+                            <td class="py-2.5 px-4">var_ucl / cl / lcl</td>
+                            <td class="py-2.5 px-4 font-sans">-</td>
+                            <td class="py-2.5 px-4">0</td>
+                            <td class="py-2.5 px-4">0.0000</td>
+                            <td class="py-2.5 px-4 font-sans">占位字段，表明 P 控制图无极差子图</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </div>
+
+    <!-- 脚本：渲染 Plotly P 控制图 -->
+    <script>
+        const xPoints = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        const pValues = [0.03, 0.02, 0.15, 0.01, 0.05, 0.02, 0.18, 0.02, 0.01, 0.04];
+        
+        // _calc_p_limits 字典推导输出值
+        const limits = {
+            ucl: 0.1202,
+            sigma_2_upper: 0.0978,
+            sigma_1_upper: 0.0754,
+            center_line: 0.0530,
+            sigma_1_lower: 0.0306,
+            sigma_2_lower: 0.0082,
+            lcl: 0.0000
+        };
+
+        const markerColors = pValues.map(v => v > limits.ucl ? '#ef4444' : '#0f172a');
+        const markerSizes = pValues.map(v => v > limits.ucl ? 9 : 7);
+
+        const traces = [
+            // UCL 虚线 (+3σ)
+            {
+                x: [1, 10], y: [limits.ucl, limits.ucl], mode: 'lines', name: 'UCL (0.1202)',
+                line: { color: '#ef4444', dash: 'dash', width: 1.5 },
+                hoverinfo: 'y+name'
+            },
+            // +2σ 虚线
+            {
+                x: [1, 10], y: [limits.sigma_2_upper, limits.sigma_2_upper], mode: 'lines', name: '+2σ (0.0978)',
+                line: { color: '#f59e0b', dash: 'dot', width: 1 },
+                hoverinfo: 'y+name'
+            },
+            // +1σ 虚线
+            {
+                x: [1, 10], y: [limits.sigma_1_upper, limits.sigma_1_upper], mode: 'lines', name: '+1σ (0.0754)',
+                line: { color: '#93c5fd', dash: 'dot', width: 1 },
+                hoverinfo: 'y+name'
+            },
+            // 中心线 CL
+            {
+                x: [1, 10], y: [limits.center_line, limits.center_line], mode: 'lines', name: 'CL (0.0530)',
+                line: { color: '#475569', width: 1.8 },
+                hoverinfo: 'y+name'
+            },
+            // -1σ 虚线
+            {
+                x: [1, 10], y: [limits.sigma_1_lower, limits.sigma_1_lower], mode: 'lines', name: '-1σ (0.0306)',
+                line: { color: '#93c5fd', dash: 'dot', width: 1 },
+                hoverinfo: 'y+name'
+            },
+            // -2σ 虚线
+            {
+                x: [1, 10], y: [limits.sigma_2_lower, limits.sigma_2_lower], mode: 'lines', name: '-2σ (0.0082)',
+                line: { color: '#f59e0b', dash: 'dot', width: 1 },
+                hoverinfo: 'y+name'
+            },
+            // LCL 虚线 (-3σ)
+            {
+                x: [1, 10], y: [limits.lcl, limits.lcl], mode: 'lines', name: 'LCL (0.0000)',
+                line: { color: '#10b981', dash: 'dash', width: 1.5 },
+                hoverinfo: 'y+name'
+            },
+            // 连接折线
+            {
+                x: xPoints, y: pValues, mode: 'lines',
+                line: { color: '#64748b', width: 1.2 },
+                showlegend: false, hoverinfo: 'skip'
+            },
+            // 散点标记
+            {
+                x: xPoints, y: pValues, mode: 'markers', name: '不合格品率 (P)',
+                marker: { 
+                    color: markerColors, 
+                    size: markerSizes,
+                    line: { color: '#ffffff', width: 1 }
+                },
+                hovertemplate: '子组序号: %{x}<br>不合格率: %{y:.4f}<extra></extra>'
+            }
+        ];
+
+        const layout = {
+            title: { text: 'P 控制图 (包含异常点测试)', font: { size: 16, color: '#1e293b' }, x: 0.02 },
+            showlegend: true,
+            legend: { orientation: 'h', x: 0.01, y: 1.12, font: { size: 11 } },
+            plot_bgcolor: '#f8fafc',
+            paper_bgcolor: '#ffffff',
+            margin: { l: 60, r: 85, t: 80, b: 50 },
+            xaxis: {
+                dtick: 1,
+                zeroline: false,
+                showgrid: true,
+                gridcolor: '#f1f5f9',
+                linecolor: '#334155',
+                mirror: true,
+                title: { text: '子组序号 (Subgroup)', font: { size: 12 } }
+            },
+            yaxis: {
+                zeroline: true,
+                zerolinecolor: '#94a3b8',
+                showgrid: true,
+                gridcolor: '#f1f5f9',
+                linecolor: '#334155',
+                mirror: true,
+                range: [-0.01, 0.20],
+                title: { text: '不合格品率 (Proportion)', font: { size: 12 } }
+            },
+            annotations: [
+                { text: '<b>UCL: 0.1202</b>', x: 10, y: limits.ucl, xanchor: 'left', showarrow: false, font: { size: 10, color: '#dc2626' } },
+                { text: '+2σ: 0.0978', x: 10, y: limits.sigma_2_upper, xanchor: 'left', showarrow: false, font: { size: 9, color: '#d97706' } },
+                { text: '+1σ: 0.0754', x: 10, y: limits.sigma_1_upper, xanchor: 'left', showarrow: false, font: { size: 9, color: '#2563eb' } },
+                { text: '<b>CL: 0.0530</b>', x: 10, y: limits.center_line, xanchor: 'left', showarrow: false, font: { size: 10, color: '#1e293b' } },
+                { text: '-1σ: 0.0306', x: 10, y: limits.sigma_1_lower, xanchor: 'left', showarrow: false, font: { size: 9, color: '#2563eb' } },
+                { text: '-2σ: 0.0082', x: 10, y: limits.sigma_2_lower, xanchor: 'left', showarrow: false, font: { size: 9, color: '#d97706' } },
+                { text: '<b>LCL: 0.0000</b>', x: 10, y: limits.lcl, xanchor: 'left', showarrow: false, font: { size: 10, color: '#059669' } },
+                {
+                    x: 3, y: 0.15, text: '点 3 报警<br>(0.1500 > UCL)',
+                    showarrow: true, arrowhead: 2, ax: -35, ay: -35,
+                    bgcolor: '#fee2e2', bordercolor: '#ef4444', font: { size: 11, color: '#991b1b' }
+                },
+                {
+                    x: 7, y: 0.18, text: '点 7 报警<br>(0.1800 > UCL)',
+                    showarrow: true, arrowhead: 2, ax: 35, ay: -35,
+                    bgcolor: '#fee2e2', bordercolor: '#ef4444', font: { size: 11, color: '#991b1b' }
+                }
+            ]
+        };
+
+        Plotly.newPlot('spc-p-chart', traces, layout, { responsive: true });
+    </script>
+</body>
+</html>
