@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>交互式 SPC 核心算法电子教材</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        .sidebar {
+            height: 100vh;
+            overflow-y: auto;
+        }
+        .content-area {
+            height: 100vh;
+            overflow-y: auto;
+        }
+        .nav-item {
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .nav-item:hover, .nav-item.active {
+            background-color: #f1f5f9;
+            color: #2563eb;
+            font-weight: 600;
+        }
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans flex h-screen overflow-hidden">
+
+    <!-- 左侧导航栏 -->
+    <aside class="w-64 bg-white border-r border-slate-200 sidebar flex flex-col z-10 relative">
+        <div class="p-6 border-b border-slate-200">
+            <h1 class="text-xl font-bold text-slate-900 tracking-tight">SPC 核心算法</h1>
+            <p class="text-xs text-slate-500 mt-1">统计过程控制教程</p>
+        </div>
+        
+        <nav class="flex-1 px-4 py-6 space-y-6">
+            
+            <!-- 首页引导 -->
+            <div>
+                <ul class="space-y-1">
+                    <li class="nav-item active px-3 py-2 rounded-lg text-sm text-slate-700" onclick="loadContent('home', this)">
+                        📚 控制图选择决策树
+                    </li>
+                </ul>
+            </div>
+
+            <!-- 计量型控制图 -->
+            <div>
+                <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 px-3">计量型控制图 (Continuous)</h2>
+                <ul class="space-y-1">
+                    <li class="nav-item px-3 py-2 rounded-lg text-sm text-slate-700" onclick="loadContent('spc_xmr_chart.html', this)">
+                        1. XmR 单值-移动极差图
+                    </li>
+                    <li class="nav-item px-3 py-2 rounded-lg text-sm text-slate-700" onclick="loadContent('spc_xbar_r_chart.html', this)">
+                        2. X̄-R 均值-极差图 (n<10)
+                    </li>
+                    <li class="nav-item px-3 py-2 rounded-lg text-sm text-slate-700" onclick="loadContent('spc_xbar_s_chart.html', this)">
+                        3. X̄-S 均值-标准差图 (n≥10)
+                    </li>
+                </ul>
+            </div>
+
+            <!-- 计数型控制图 -->
+            <div>
+                <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 px-3">计数型控制图 (Attribute)</h2>
+                <ul class="space-y-1">
+                    <li class="nav-item px-3 py-2 rounded-lg text-sm text-slate-700" onclick="loadContent('spc_p_chart.html', this)">
+                        4. P 图 (不合格品率, n变动)
+                    </li>
+                    <li class="nav-item px-3 py-2 rounded-lg text-sm text-slate-700" onclick="loadContent('spc_np_chart.html', this)">
+                        5. nP 图 (不合格品数, n恒定)
+                    </li>
+                    <li class="nav-item px-3 py-2 rounded-lg text-sm text-slate-700" onclick="loadContent('spc_c_chart.html', this)">
+                        6. C 图 (缺陷数, 面积恒定)
+                    </li>
+                    <li class="nav-item px-3 py-2 rounded-lg text-sm text-slate-700" onclick="loadContent('spc_u_chart.html', this)">
+                        7. U 图 (单位缺陷, 面积变动)
+                    </li>
+                </ul>
+            </div>
+        </nav>
+        
+        <div class="p-4 border-t border-slate-200">
+            <div class="text-xs text-slate-400 text-center">Based on pycontrolcharts</div>
+        </div>
+    </aside>
+
+    <!-- 右侧内容区 -->
+    <main class="flex-1 flex flex-col bg-slate-50 content-area relative" id="main-content">
+        
+        <!-- 默认首页内容 (决策树) -->
+        <div id="home-content" class="p-10 w-full h-full absolute top-0 left-0 bg-slate-50 overflow-y-auto z-0">
+            <div class="max-w-4xl mx-auto space-y-8 pb-10">
+                <header class="bg-white p-8 rounded-xl shadow-sm border border-slate-200">
+                    <h1 class="text-3xl font-bold text-slate-900 mb-2">统计过程控制 (SPC) 核心算法导读</h1>
+                    <p class="text-slate-600">欢迎来到 SPC 交互式电子教材。左侧导航栏包含了休哈特 (Shewhart) 经典的 7 种控制图源码级拆解与交互式看板。</p>
+                </header>
+
+                <!-- 决策树卡片 -->
+                <section class="bg-white p-8 rounded-xl shadow-sm border border-slate-200">
+                    <h2 class="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                        <span class="bg-indigo-600 text-white w-6 h-6 rounded-full inline-flex items-center justify-center text-sm">1</span>
+                        如何选择正确的控制图？
+                    </h2>
+                    
+                    <div class="space-y-4">
+                        <!-- 第一层问题 -->
+                        <div class="p-4 border border-blue-200 bg-blue-50 rounded-lg">
+                            <h3 class="font-bold text-blue-900 mb-2">Q1: 你的数据是什么类型？</h3>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="bg-white p-3 rounded border border-blue-100 shadow-sm">
+                                    <span class="font-semibold text-slate-700 block">连续测量数据 (计量型)</span>
+                                    <span class="text-xs text-slate-500">如: 长度、重量、时间、温度 (有小数位)</span>
+                                    <div class="mt-2 text-blue-600 text-sm font-bold">➔ 继续看 Q2</div>
+                                </div>
+                                <div class="bg-white p-3 rounded border border-blue-100 shadow-sm">
+                                    <span class="font-semibold text-slate-700 block">离散计数数据 (计数型)</span>
+                                    <span class="text-xs text-slate-500">如: 合格/不合格、表面划痕个数 (只能是整数)</span>
+                                    <div class="mt-2 text-indigo-600 text-sm font-bold">➔ 继续看 Q3</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 第二层问题 (计量型分支) -->
+                        <div class="p-4 border border-slate-200 bg-slate-50 rounded-lg ml-8">
+                            <h3 class="font-bold text-slate-800 mb-2">Q2: [计量型] 每次抽样的样本大小 (n) 是多少？</h3>
+                            <ul class="space-y-2 text-sm">
+                                <li class="flex justify-between items-center bg-white p-2 rounded border border-slate-200">
+                                    <span>单件抽样，无法分组 (n=1)</span>
+                                    <button class="bg-blue-100 text-blue-700 px-3 py-1 rounded font-bold hover:bg-blue-200" onclick="loadContent('spc_xmr_chart.html', document.querySelectorAll('.nav-item')[1])">XmR 图</button>
+                                </li>
+                                <li class="flex justify-between items-center bg-white p-2 rounded border border-slate-200">
+                                    <span>小样本抽样 (n=2~9，通常为4或5)</span>
+                                    <button class="bg-blue-100 text-blue-700 px-3 py-1 rounded font-bold hover:bg-blue-200" onclick="loadContent('spc_xbar_r_chart.html', document.querySelectorAll('.nav-item')[2])">X̄-R 图</button>
+                                </li>
+                                <li class="flex justify-between items-center bg-white p-2 rounded border border-slate-200">
+                                    <span>大样本抽样 (n≥10)</span>
+                                    <button class="bg-blue-100 text-blue-700 px-3 py-1 rounded font-bold hover:bg-blue-200" onclick="loadContent('spc_xbar_s_chart.html', document.querySelectorAll('.nav-item')[3])">X̄-S 图</button>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <!-- 第三层问题 (计数型分支) -->
+                        <div class="p-4 border border-slate-200 bg-slate-50 rounded-lg ml-8">
+                            <h3 class="font-bold text-slate-800 mb-2">Q3: [计数型] 关注的是“不合格品”还是“缺陷”？</h3>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="bg-white p-3 rounded border border-slate-200">
+                                    <span class="font-semibold text-slate-700 block mb-1">监控【不合格品】(整件报废)</span>
+                                    <ul class="space-y-2 text-sm mt-2">
+                                        <li class="flex justify-between items-center bg-slate-50 p-1.5 rounded">
+                                            <span class="text-xs text-slate-600">样本量 (n) 可变</span>
+                                            <button class="text-indigo-600 font-bold hover:underline" onclick="loadContent('spc_p_chart.html', document.querySelectorAll('.nav-item')[4])">P 图</button>
+                                        </li>
+                                        <li class="flex justify-between items-center bg-slate-50 p-1.5 rounded">
+                                            <span class="text-xs text-slate-600">样本量 (n) 恒定</span>
+                                            <button class="text-indigo-600 font-bold hover:underline" onclick="loadContent('spc_np_chart.html', document.querySelectorAll('.nav-item')[5])">nP 图</button>
+                                        </li>
+                                    </ul>
+                                </div>
+                                <div class="bg-white p-3 rounded border border-slate-200">
+                                    <span class="font-semibold text-slate-700 block mb-1">监控【缺陷个数】(一件可有多处)</span>
+                                    <ul class="space-y-2 text-sm mt-2">
+                                        <li class="flex justify-between items-center bg-slate-50 p-1.5 rounded">
+                                            <span class="text-xs text-slate-600">检验面积/机会恒定</span>
+                                            <button class="text-indigo-600 font-bold hover:underline" onclick="loadContent('spc_c_chart.html', document.querySelectorAll('.nav-item')[6])">C 图</button>
+                                        </li>
+                                        <li class="flex justify-between items-center bg-slate-50 p-1.5 rounded">
+                                            <span class="text-xs text-slate-600">检验面积/机会可变</span>
+                                            <button class="text-indigo-600 font-bold hover:underline" onclick="loadContent('spc_u_chart.html', document.querySelectorAll('.nav-item')[7])">U 图</button>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 核心概念：样本容量 (n) -->
+                <section class="bg-white p-8 rounded-xl shadow-sm border border-slate-200">
+                    <h2 class="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
+                        <span class="bg-indigo-600 text-white w-6 h-6 rounded-full inline-flex items-center justify-center text-sm">2</span>
+                        核心概念：什么是 n (样本容量/子组大小)？
+                    </h2>
+                    <p class="text-sm text-slate-600 mb-4">在 SPC 控制图中，"n" 代表 <strong>样本容量 (Sample Size)</strong> 或 <strong>子组大小 (Subgroup Size)</strong>。它在不同类型的控制图中有不同的业务含义：</p>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- 计量型中的 n -->
+                        <div class="bg-slate-50 p-5 rounded-lg border border-slate-200">
+                            <h3 class="font-bold text-slate-800 mb-2 border-b border-slate-200 pb-2">1. 在【计量型】控制图中：</h3>
+                            <p class="text-sm text-slate-600 font-semibold mb-2">n 代表“每次抽样测量的个数”</p>
+                            <p class="text-xs text-slate-500 mb-2">通常不会每生产一个零件就画一个点，而是“每隔一段时间，连续抽几个测一下，算个均值”。这抽出来的“几个”，就是 n。</p>
+                            <ul class="text-xs text-slate-600 space-y-2 mt-3 bg-white p-3 rounded border border-slate-100">
+                                <li><strong>n < 10 (X̄-R 图):</strong> 比如每小时抽检 <strong>5</strong> 个零件 (n=5)。样本量小，直接用最大值减最小值算“极差 (R)”即可反映波动。</li>
+                                <li><strong>n ≥ 10 (X̄-S 图):</strong> 比如通过自动化每小时测 <strong>15</strong> 个 (n=15)。样本量大时，极差会失效，必须用这 15 个数算更精确的“标准差 (S)”。</li>
+                            </ul>
+                        </div>
+
+                        <!-- 计数型中的 n -->
+                        <div class="bg-slate-50 p-5 rounded-lg border border-slate-200">
+                            <h3 class="font-bold text-slate-800 mb-2 border-b border-slate-200 pb-2">2. 在【计数型】控制图中：</h3>
+                            <p class="text-sm text-slate-600 font-semibold mb-2">n 代表“每次检验的总件数/批量”</p>
+                            <p class="text-xs text-slate-500 mb-2">当进行合格/不合格判定时，n 是你这一批次（或这一天）总共检查了多少件产品。</p>
+                            <ul class="text-xs text-slate-600 space-y-2 mt-3 bg-white p-3 rounded border border-slate-100">
+                                <li><strong>n 变动 (P 图):</strong> 比如今天生产了105件，明天120件。每天检查的总数 (n) 不固定，只能折算成<strong>不良率</strong>画图。</li>
+                                <li><strong>n 恒定 (nP 图):</strong> 比如规定每天必须死死抽检 <strong>100</strong> 个。每天 n 都是 100 不变，就可以偷懒不算比率，直接画<strong>不良品数量</strong>。</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- Nelson 判异规则 -->
+                <section class="bg-white p-8 rounded-xl shadow-sm border border-slate-200">
+                     <h2 class="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
+                        <span class="bg-indigo-600 text-white w-6 h-6 rounded-full inline-flex items-center justify-center text-sm">3</span>
+                        Nelson 判异规则 (Run Tests) 简介
+                    </h2>
+                    <p class="text-sm text-slate-600 mb-3">当控制图上的数据点符合以下特定模式时，系统将判定为“失控 (Out of Control)”，并在图表中以高亮显示。</p>
+                    <ul class="list-disc list-inside text-sm text-slate-600 space-y-1 bg-slate-50 p-4 rounded-lg border border-slate-100">
+                        <li><strong>Rule 1:</strong> 1个点落在 3σ 控制限之外 (最基本规则，所有图表适用)。</li>
+                        <li><strong>Rule 2:</strong> 连续 9 个点落在中心线 (CL) 的同一侧 (表明过程均值发生偏移)。</li>
+                        <li><strong>Rule 3:</strong> 连续 6 个点持续上升或持续下降 (表明存在趋势)。</li>
+                        <li><strong>Rule 4:</strong> 连续 14 个点交替上下跳动。</li>
+                    </ul>
+                </section>
+            </div>
+        </div>
+
+        <!-- iframe 用于加载各个图表的 html，默认隐藏 -->
+        <iframe id="chart-frame" class="hidden absolute top-0 left-0 w-full h-full z-10 bg-white"></iframe>
+    </main>
+
+    <script>
+        function loadContent(filename, element) {
+            // 更新左侧导航激活状态
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            if(element) element.classList.add('active');
+
+            const homeContent = document.getElementById('home-content');
+            const iframe = document.getElementById('chart-frame');
+
+            if (filename === 'home') {
+                homeContent.classList.remove('hidden');
+                iframe.classList.add('hidden');
+                iframe.src = '';
+            } else {
+                homeContent.classList.add('hidden');
+                iframe.classList.remove('hidden');
+                // 因为所有 html 都在同一目录下，直接加载文件名
+                iframe.src = filename;
+            }
+        }
+    </script>
+</body>
+</html>
